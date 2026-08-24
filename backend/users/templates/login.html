@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CRM Login</title>
+</head>
+
+<body>
+
+    <h2>CRM Login</h2>
+
+    <form method="POST">
+        {% csrf_token %}
+
+        <div>
+            <label>Username</label>
+            <input
+                type="text"
+                name="username"
+                required
+            >
+        </div>
+
+        <br>
+
+        <div>
+            <label>Password</label>
+            <input
+                type="password"
+                name="password"
+                required
+            >
+        </div>
+
+        <br>
+
+        <button type="submit">
+            Login
+        </button>
+    </form>
+
+    {% if error %}
+        <p>{{ error }}</p>
+    {% endif %}
+
+</body>
+</html>

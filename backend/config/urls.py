@@ -9,4 +9,5 @@ urlpatterns = [
         "api/",
         include("config.api_urls")
     ),
+    path("", include("users.urls")),
 ]

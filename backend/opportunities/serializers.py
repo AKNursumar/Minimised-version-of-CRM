@@ -10,7 +10,7 @@ class OpportunitySerializer(serializers.ModelSerializer):
             "id",
             "title",
             "contact",
-            "amount",
+            "assigned_to",
             "stage",
             "expected_close",
             "notes",

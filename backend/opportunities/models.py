@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from contacts.models import Contact
 
@@ -20,6 +21,14 @@ class Opportunity(models.Model):
         Contact,
         on_delete=models.CASCADE,
         related_name="opportunities"
+    )
+
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_opportunities"
     )
 
     amount = models.DecimalField(
