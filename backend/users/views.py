@@ -1,6 +1,6 @@
 from django.contrib.auth import authenticate
 from django.shortcuts import render, redirect
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -26,10 +26,53 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [AdminOnly]
 
 
+class APILoginView(APIView):
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+
+        user = authenticate(request, username=username, password=password)
+        if user is None:
+            return Response(
+                {"error": "Invalid username or password."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        refresh = RefreshToken.for_user(user)
+        user_data = CurrentUserSerializer(user).data
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": user_data,
+        })
+
+
 def login_view(request):
 
     if request.method == 'GET':
         return render(request, "login.html")
+
+    if request.content_type == 'application/json':
+        import json
+        from django.http import JsonResponse
+        try:
+            body = json.loads(request.body.decode('utf-8'))
+        except Exception:
+            body = {}
+        username = body.get("username")
+        passwd = body.get("password")
+        user = authenticate(request, username=username, password=passwd)
+        if user is None:
+            return JsonResponse({"error": "Invalid username or password."}, status=400)
+        refresh = RefreshToken.for_user(user)
+        return JsonResponse({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": CurrentUserSerializer(user).data
+        })
 
     username = request.POST.get("username")
     passwd = request.POST.get("password")
