@@ -13,18 +13,24 @@ class OpportunityViewSet(viewsets.ModelViewSet):
     permission_classes = [AllCRMUsers]
 
     def get_queryset(self):
-
         user = self.request.user
 
-        if user.role == "ADMIN":
-            return Opportunity.objects.all().order_by("-id")
+        if user.role in ["ADMIN", "MANAGER"]:
+            qs = Opportunity.objects.all().order_by("-id")
+        else:
+            qs = Opportunity.objects.filter(
+                assigned_to=user
+            ).order_by("-id")
 
-        if user.role == "MANAGER":
-            return Opportunity.objects.all().order_by("-id")
+        search = self.request.query_params.get("search")
+        if search:
+            qs = qs.filter(title__icontains=search)
 
-        return Opportunity.objects.filter(
-            assigned_to=user
-        ).order_by("-id")
+        stage = self.request.query_params.get("stage")
+        if stage:
+            qs = qs.filter(stage=stage)
+
+        return qs
 
     def perform_create(self, serializer):
 

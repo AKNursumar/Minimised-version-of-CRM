@@ -12,9 +12,25 @@ from .services import send_notification_email, create_and_send_notification
 
 class FollowUpViewSet(viewsets.ModelViewSet):
 
-    queryset = FollowUp.objects.all().order_by("-id")
     serializer_class = FollowUpSerializer
     permission_classes = [AllCRMUsers]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role in ["ADMIN", "MANAGER"]:
+            qs = FollowUp.objects.all().order_by("-id")
+        else:
+            qs = FollowUp.objects.filter(opportunity__assigned_to=user).order_by("-id")
+
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            qs = qs.filter(status=status_param)
+
+        date_param = self.request.query_params.get("date")
+        if date_param:
+            qs = qs.filter(followup_date=date_param)
+
+        return qs
 
     def perform_create(self, serializer):
         followup = serializer.save()

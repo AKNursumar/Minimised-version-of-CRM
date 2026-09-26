@@ -112,24 +112,46 @@ api.interceptors.response.use(
 // Helper to extract a friendly error message from API response
 export const getErrorMessage = (error, defaultMsg = 'An unexpected error occurred.') => {
   if (!error) return defaultMsg;
+
   if (error.response) {
-    const data = error.response.data;
+    const { status, data } = error.response;
+
+    // Standard HTTP status code messages
+    if (status === 401) {
+      return 'Session expired or unauthorized. Please log in again.';
+    }
+    if (status === 403) {
+      if (data?.detail) return data.detail;
+      return 'You do not have permission to perform this action.';
+    }
+    if (status === 404) {
+      if (data?.detail) return data.detail;
+      return 'The requested record or resource was not found.';
+    }
+    if (status === 500) {
+      return 'Internal server error. Please try again later or contact your administrator.';
+    }
+
     if (typeof data === 'string') return data;
     if (data?.error) return data.error;
     if (data?.detail) return data.detail;
     if (data?.message) return data.message;
+
     // DRF field validation errors: { field: ["error message"] }
-    if (typeof data === 'object') {
-      const firstKey = Object.keys(data)[0];
-      const val = data[firstKey];
-      if (Array.isArray(val) && val.length > 0) {
-        return `${firstKey.replace('_', ' ')}: ${val[0]}`;
+    if (typeof data === 'object' && data !== null) {
+      const keys = Object.keys(data);
+      if (keys.length > 0) {
+        const firstKey = keys[0];
+        const val = data[firstKey];
+        if (Array.isArray(val) && val.length > 0) {
+          return `${firstKey.replace(/_/g, ' ')}: ${val[0]}`;
+        }
+        if (typeof val === 'string') return `${firstKey.replace(/_/g, ' ')}: ${val}`;
       }
-      if (typeof val === 'string') return `${firstKey.replace('_', ' ')}: ${val}`;
     }
-    return `Server responded with error (${error.response.status})`;
+    return `Server responded with error (${status})`;
   } else if (error.request) {
-    return 'Cannot reach the server. Please ensure the Django backend is running.';
+    return 'Cannot reach the server. Please check your network connection and ensure the backend is running.';
   }
   return error.message || defaultMsg;
 };
