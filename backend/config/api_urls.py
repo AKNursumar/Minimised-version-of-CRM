@@ -1,6 +1,6 @@
 from rest_framework.routers import DefaultRouter
 
-from users.views import UserViewSet
+from users.views import UserViewSet, ActivityLogViewSet
 from leads.views import LeadViewSet
 from contacts.views import ContactViewSet
 from opportunities.views import OpportunityViewSet
@@ -13,6 +13,7 @@ from followups.views import (
 router = DefaultRouter()
 
 router.register("users", UserViewSet, basename="users")
+router.register("activity-logs", ActivityLogViewSet, basename="activity-logs")
 router.register("leads", LeadViewSet, basename="leads")
 router.register("contacts", ContactViewSet, basename="contacts")
 router.register(

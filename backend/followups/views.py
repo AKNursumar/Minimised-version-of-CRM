@@ -33,6 +33,20 @@ class FollowUpViewSet(viewsets.ModelViewSet):
                 message=message,
             )
 
+        from users.activity import log_activity
+        opp_title = followup.opportunity.title if followup.opportunity else f"#{followup.id}"
+        log_activity(self.request.user, f"Created follow-up for {opp_title}")
+
+    def perform_update(self, serializer):
+        prev_status = self.get_object().status
+        followup = serializer.save()
+        from users.activity import log_activity
+        opp_title = followup.opportunity.title if followup.opportunity else f"#{followup.id}"
+        if prev_status != followup.status and followup.status == FollowUp.Status.COMPLETED:
+            log_activity(self.request.user, f"Completed follow-up for {opp_title}")
+        else:
+            log_activity(self.request.user, f"Updated follow-up for {opp_title}")
+
 
 class EmailNotificationViewSet(viewsets.ModelViewSet):
 
@@ -44,11 +58,15 @@ class EmailNotificationViewSet(viewsets.ModelViewSet):
         notification = serializer.save()
         if notification.status == EmailNotification.Status.PENDING:
             send_notification_email(notification)
+        from users.activity import log_activity
+        log_activity(self.request.user, f"Sent email notification to {notification.receiver}")
 
     @action(detail=True, methods=["post"])
     def resend(self, request, pk=None):
         notification = self.get_object()
         success, message = send_notification_email(notification)
+        from users.activity import log_activity
+        log_activity(request.user, f"Re-sent email notification to {notification.receiver}")
         return Response({
             "success": success,
             "message": message,

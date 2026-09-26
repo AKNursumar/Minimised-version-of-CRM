@@ -22,3 +22,13 @@ class LeadViewSet(viewsets.ModelViewSet):
         return Lead.objects.filter(
             assigned_to=user
         )
+
+    def perform_create(self, serializer):
+        lead = serializer.save()
+        from users.activity import log_activity
+        log_activity(self.request.user, f"Created lead {lead.name}")
+
+    def perform_update(self, serializer):
+        lead = serializer.save()
+        from users.activity import log_activity
+        log_activity(self.request.user, f"Updated lead {lead.name}")

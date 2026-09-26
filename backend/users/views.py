@@ -6,9 +6,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import User
-from .permissions import AdminOnly
-from .serializers import UserSerializer, CurrentUserSerializer
+from .models import User, ActivityLog
+from .permissions import AdminOnly, AllCRMUsers
+from .serializers import UserSerializer, CurrentUserSerializer, ActivityLogSerializer
+from .activity import log_activity
 
 class CurrentUserView(APIView):
 
@@ -26,6 +27,19 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [AdminOnly]
 
 
+class ActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
+
+    queryset = ActivityLog.objects.all().order_by("-created_at")
+    serializer_class = ActivityLogSerializer
+    permission_classes = [AllCRMUsers]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role in ["ADMIN", "MANAGER"]:
+            return ActivityLog.objects.all().order_by("-created_at")
+        return ActivityLog.objects.filter(user=user).order_by("-created_at")
+
+
 class APILoginView(APIView):
     permission_classes = []
     authentication_classes = []
@@ -40,6 +54,8 @@ class APILoginView(APIView):
                 {"error": "Invalid username or password."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        log_activity(user, f"User {user.username} logged in")
 
         refresh = RefreshToken.for_user(user)
         user_data = CurrentUserSerializer(user).data
