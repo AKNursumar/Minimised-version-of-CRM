@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   RefreshCw,
   FileText,
+  Download,
 } from 'lucide-react';
 import MainLayout from '../components/MainLayout';
 import Modal from '../components/Modal';
@@ -21,11 +22,14 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import contactService from '../services/contactService';
 import leadService from '../services/leadService';
 import { getErrorMessage } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 export const Contacts = () => {
+  const { currentUser } = useAuth();
   const [contacts, setContacts] = useState([]);
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
@@ -178,6 +182,33 @@ export const Contacts = () => {
     return found ? found.name : `Lead #${leadId}`;
   };
 
+  // Export Contacts to CSV
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      const blob = await contactService.exportCsv();
+      const url = window.URL.createObjectURL(new Blob([blob], { type: 'text/csv;charset=utf-8;' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'contacts_export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      setToast({
+        type: 'success',
+        message: 'Contacts exported to contacts_export.csv successfully!',
+      });
+    } catch (err) {
+      setToast({
+        type: 'error',
+        message: getErrorMessage(err, 'Failed to export contacts. Only Admins and Managers can export data.'),
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <MainLayout title="Contacts Directory">
       {/* Toast Alert */}
@@ -198,6 +229,18 @@ export const Contacts = () => {
           </p>
         </div>
         <div className="flex items-center space-x-3">
+          {currentUser?.role !== 'SALES_EXECUTIVE' && (
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={exporting}
+              className="inline-flex items-center px-3.5 py-2 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 bg-white hover:bg-gray-50 transition shadow-2xs"
+              title="Export Contacts to CSV"
+            >
+              <Download className={`w-3.5 h-3.5 mr-1.5 ${exporting ? 'animate-bounce' : ''}`} />
+              {exporting ? 'Exporting...' : 'Export CSV'}
+            </button>
+          )}
           <button
             type="button"
             onClick={fetchContacts}

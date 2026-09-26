@@ -30,6 +30,14 @@ export const contactService = {
     const response = await api.delete(`/api/contacts/${id}/`);
     return response.data;
   },
+
+  exportCsv: async (params = {}) => {
+    const response = await api.get('/api/contacts/export-csv/', {
+      params,
+      responseType: 'blob',
+    });
+    return response.data;
+  },
 };
 
 export default contactService;

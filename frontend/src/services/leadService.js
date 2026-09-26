@@ -30,6 +30,14 @@ export const leadService = {
     const response = await api.delete(`/api/leads/${id}/`);
     return response.data;
   },
+
+  exportCsv: async (params = {}) => {
+    const response = await api.get('/api/leads/export-csv/', {
+      params,
+      responseType: 'blob',
+    });
+    return response.data;
+  },
 };
 
 export default leadService;
