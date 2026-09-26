@@ -2,6 +2,27 @@ from rest_framework import serializers
 from .models import FollowUp, EmailNotification
 
 
+class EmailNotificationSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = EmailNotification
+        fields = [
+            "id",
+            "followup",
+            "receiver",
+            "subject",
+            "message",
+            "sent_at",
+            "status",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "sent_at",
+            "created_at",
+        ]
+
+
 class FollowUpSerializer(serializers.ModelSerializer):
     email_notifications = EmailNotificationSerializer(many=True, read_only=True)
     has_email_reminder = serializers.SerializerMethodField()
@@ -29,25 +50,4 @@ class FollowUpSerializer(serializers.ModelSerializer):
             "has_email_reminder",
             "created_at",
             "updated_at",
-        ]
-
-
-class EmailNotificationSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = EmailNotification
-        fields = [
-            "id",
-            "followup",
-            "receiver",
-            "subject",
-            "message",
-            "sent_at",
-            "status",
-            "created_at",
-        ]
-        read_only_fields = [
-            "id",
-            "sent_at",
-            "created_at",
         ]

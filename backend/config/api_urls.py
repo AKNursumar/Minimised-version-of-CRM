@@ -32,4 +32,10 @@ router.register(
 )
 
 
-urlpatterns = router.urls
+from django.urls import path
+from .analytics_views import AnalyticsSummaryView
+
+urlpatterns = router.urls + [
+    path("reports/analytics/", AnalyticsSummaryView.as_view(), name="crm-analytics"),
+    path("analytics/summary/", AnalyticsSummaryView.as_view(), name="crm-analytics-alt"),
+]
