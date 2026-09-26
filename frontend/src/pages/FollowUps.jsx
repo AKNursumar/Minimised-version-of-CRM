@@ -11,6 +11,9 @@ import {
   Edit2,
   Trash2,
   TrendingUp,
+  Mail,
+  Send,
+  FileText,
 } from 'lucide-react';
 import MainLayout from '../components/MainLayout';
 import Modal from '../components/Modal';
@@ -18,6 +21,7 @@ import Toast from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
 import followupService from '../services/followupService';
 import opportunityService from '../services/opportunityService';
+import notificationService from '../services/notificationService';
 import { getErrorMessage } from '../services/api';
 
 export const FollowUps = () => {
@@ -35,7 +39,9 @@ export const FollowUps = () => {
   // Modals
   const [isAddEditOpen, setIsAddEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isEmailViewOpen, setIsEmailViewOpen] = useState(false);
   const [currentFollowup, setCurrentFollowup] = useState(null);
+  const [currentNotification, setCurrentNotification] = useState(null);
 
   // Form State
   const initialFormState = {
@@ -44,6 +50,10 @@ export const FollowUps = () => {
     reminder_time: '10:00:00',
     status: 'PENDING',
     remarks: '',
+    email_reminder: false,
+    receiver: '',
+    subject: '',
+    message: '',
   };
   const [formData, setFormData] = useState(initialFormState);
 
@@ -76,7 +86,9 @@ export const FollowUps = () => {
 
   const filteredFollowups = followups.filter((f) => {
     const query = searchQuery.toLowerCase();
-    const matchesSearch = f.remarks?.toLowerCase().includes(query);
+    const matchesSearch =
+      f.remarks?.toLowerCase().includes(query) ||
+      f.email_notifications?.some((n) => n.receiver?.toLowerCase().includes(query));
     const matchesStatus = statusFilter === 'ALL' || f.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -87,6 +99,8 @@ export const FollowUps = () => {
       ...initialFormState,
       opportunity: opportunities[0]?.id || '',
       followup_date: new Date().toISOString().split('T')[0],
+      email_reminder: true, // Default to true as per Week 6 workflow
+      receiver: '',
     });
     setIsAddEditOpen(true);
   };
@@ -99,6 +113,10 @@ export const FollowUps = () => {
       reminder_time: f.reminder_time || '10:00:00',
       status: f.status || 'PENDING',
       remarks: f.remarks || '',
+      email_reminder: false,
+      receiver: '',
+      subject: '',
+      message: '',
     });
     setIsAddEditOpen(true);
   };
@@ -106,6 +124,22 @@ export const FollowUps = () => {
   const handleOpenDelete = (f) => {
     setCurrentFollowup(f);
     setIsDeleteOpen(true);
+  };
+
+  const handleViewEmail = (notif) => {
+    setCurrentNotification(notif);
+    setIsEmailViewOpen(true);
+  };
+
+  const handleResendEmail = async (notifId) => {
+    try {
+      const result = await notificationService.resend(notifId);
+      setToast({ type: 'success', message: result.message || 'Email re-sent successfully!' });
+      fetchFollowups();
+      if (isEmailViewOpen) setIsEmailViewOpen(false);
+    } catch (err) {
+      setToast({ type: 'error', message: getErrorMessage(err, 'Failed to re-send email.') });
+    }
   };
 
   const handleQuickStatus = async (f, newStatus) => {
@@ -128,6 +162,10 @@ export const FollowUps = () => {
       setToast({ type: 'error', message: 'Follow-up date is required.' });
       return;
     }
+    if (formData.email_reminder && !formData.receiver.trim()) {
+      setToast({ type: 'error', message: 'Please provide a recipient email address for the reminder.' });
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -137,6 +175,10 @@ export const FollowUps = () => {
         reminder_time: formData.reminder_time || null,
         status: formData.status,
         remarks: formData.remarks,
+        email_reminder: formData.email_reminder,
+        receiver: formData.receiver,
+        subject: formData.subject,
+        message: formData.message,
       };
 
       if (currentFollowup) {
@@ -146,7 +188,12 @@ export const FollowUps = () => {
       } else {
         const created = await followupService.create(payload);
         setFollowups((prev) => [created, ...prev]);
-        setToast({ type: 'success', message: 'Follow-up scheduled successfully.' });
+        setToast({
+          type: 'success',
+          message: formData.email_reminder
+            ? 'Follow-up scheduled and email reminder sent successfully!'
+            : 'Follow-up scheduled successfully.',
+        });
       }
       setIsAddEditOpen(false);
     } catch (err) {
@@ -177,7 +224,7 @@ export const FollowUps = () => {
   };
 
   return (
-    <MainLayout title="Client Follow-ups">
+    <MainLayout title="Client Follow-ups & Reminders">
       {toast && (
         <Toast
           type={toast.type}
@@ -189,9 +236,9 @@ export const FollowUps = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 tracking-tight">Follow-ups</h2>
+          <h2 className="text-xl font-bold text-gray-900 tracking-tight">Follow-ups & Notifications</h2>
           <p className="text-xs text-gray-500 mt-1">
-            Schedule and manage reminder calls, meetings, and client follow-ups
+            Schedule meetings, call tasks, and automated email reminders for clients
           </p>
         </div>
         <div className="flex items-center space-x-3">
@@ -225,7 +272,7 @@ export const FollowUps = () => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search remarks..."
+            placeholder="Search remarks, recipient emails..."
             className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:bg-white focus:outline-none focus:border-blue-500 transition"
           />
         </div>
@@ -249,7 +296,7 @@ export const FollowUps = () => {
       <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
         {loading ? (
           <div className="py-16">
-            <LoadingSpinner size="medium" text="Loading follow-ups..." />
+            <LoadingSpinner size="medium" text="Loading follow-ups and notifications..." />
           </div>
         ) : error ? (
           <div className="p-8 text-center">
@@ -290,89 +337,123 @@ export const FollowUps = () => {
                   <th className="px-5 py-3.5">Associated Opportunity</th>
                   <th className="px-5 py-3.5">Date & Time</th>
                   <th className="px-5 py-3.5">Status</th>
+                  <th className="px-5 py-3.5">Email Reminder</th>
                   <th className="px-5 py-3.5">Remarks / Agenda</th>
                   <th className="px-5 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredFollowups.map((f) => (
-                  <tr key={f.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-5 py-4 font-semibold text-gray-900">
-                      <div className="flex items-center">
-                        <TrendingUp className="w-3.5 h-3.5 mr-1.5 text-blue-500" />
-                        {getOppTitle(f.opportunity)}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 text-xs text-gray-700">
-                      <div className="font-medium text-gray-900">{f.followup_date}</div>
-                      {f.reminder_time && (
-                        <div className="text-gray-400 mt-0.5">{f.reminder_time}</div>
-                      )}
-                    </td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                          f.status === 'COMPLETED'
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : f.status === 'CANCELLED'
-                            ? 'bg-rose-50 text-rose-700 border-rose-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}
-                      >
-                        {f.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-xs text-gray-600 max-w-sm">
-                      {f.remarks || <span className="text-gray-400">No remarks</span>}
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      <div className="flex items-center justify-end space-x-1">
-                        {f.status === 'PENDING' && (
+                {filteredFollowups.map((f) => {
+                  const latestNotif = f.email_notifications && f.email_notifications.length > 0
+                    ? f.email_notifications[0]
+                    : null;
+
+                  return (
+                    <tr key={f.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-5 py-4 font-semibold text-gray-900">
+                        <div className="flex items-center">
+                          <TrendingUp className="w-3.5 h-3.5 mr-1.5 text-blue-500 shrink-0" />
+                          <span>{getOppTitle(f.opportunity)}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-xs text-gray-700">
+                        <div className="font-medium text-gray-900">{f.followup_date}</div>
+                        {f.reminder_time && (
+                          <div className="text-gray-400 mt-0.5">{f.reminder_time}</div>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                            f.status === 'COMPLETED'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : f.status === 'CANCELLED'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {f.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-xs">
+                        {latestNotif ? (
+                          <div className="flex items-center space-x-2">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                                latestNotif.status === 'SENT'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : latestNotif.status === 'FAILED'
+                                  ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                  : 'bg-amber-50 text-amber-700 border-amber-200'
+                              }`}
+                            >
+                              <Mail className="w-3 h-3 mr-1" />
+                              {latestNotif.status}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleViewEmail(latestNotif)}
+                              className="text-blue-600 hover:text-blue-800 text-[11px] font-medium underline"
+                            >
+                              Details
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs">No Reminder</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 text-xs text-gray-600 max-w-xs truncate">
+                        {f.remarks || <span className="text-gray-400">No remarks</span>}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex items-center justify-end space-x-1">
+                          {f.status === 'PENDING' && (
+                            <button
+                              type="button"
+                              onClick={() => handleQuickStatus(f, 'COMPLETED')}
+                              className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 transition"
+                              title="Mark as Completed"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => handleQuickStatus(f, 'COMPLETED')}
-                            className="p-1.5 rounded-md text-emerald-600 hover:bg-emerald-50 transition"
-                            title="Mark as Completed"
+                            onClick={() => handleOpenEdit(f)}
+                            className="p-1.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition"
+                            title="Edit"
                           >
-                            <CheckCircle2 className="w-4 h-4" />
+                            <Edit2 className="w-4 h-4" />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEdit(f)}
-                          className="p-1.5 rounded-md text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDelete(f)}
-                          className="p-1.5 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDelete(f)}
+                            className="p-1.5 rounded-md text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {/* Modal */}
+      {/* Add / Edit Follow-up Modal */}
       <Modal
         isOpen={isAddEditOpen}
         onClose={() => setIsAddEditOpen(false)}
-        title={currentFollowup ? 'Edit Follow-up' : 'Schedule Follow-up'}
+        title={currentFollowup ? 'Edit Follow-up' : 'Schedule Follow-up & Email Reminder'}
       >
         <form onSubmit={handleFormSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-              Opportunity *
+              Opportunity Deal *
             </label>
             <select
               required
@@ -436,13 +517,62 @@ export const FollowUps = () => {
               Remarks & Agenda
             </label>
             <textarea
-              rows={3}
+              rows={2}
               value={formData.remarks}
               onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
               placeholder="Call notes, agenda, discussion points..."
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+
+          {/* Email Notification Section (Only for new followups) */}
+          {!currentFollowup && (
+            <div className="p-4 bg-blue-50/60 border border-blue-200/80 rounded-xl space-y-3">
+              <div className="flex items-center">
+                <input
+                  id="email_reminder"
+                  type="checkbox"
+                  checked={formData.email_reminder}
+                  onChange={(e) => setFormData({ ...formData, email_reminder: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                />
+                <label htmlFor="email_reminder" className="ml-2 text-xs font-bold text-gray-900 cursor-pointer">
+                  Send Email Reminder Notification
+                </label>
+              </div>
+
+              {formData.email_reminder && (
+                <div className="space-y-3 pt-2">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-700 uppercase mb-1">
+                      Recipient Email *
+                    </label>
+                    <input
+                      type="email"
+                      required={formData.email_reminder}
+                      value={formData.receiver}
+                      onChange={(e) => setFormData({ ...formData, receiver: e.target.value })}
+                      placeholder="e.g. client@example.com"
+                      className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-gray-700 uppercase mb-1">
+                      Custom Subject (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.subject}
+                      onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+                      placeholder="Auto-generated if left blank"
+                      className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-100">
             <button
@@ -457,10 +587,82 @@ export const FollowUps = () => {
               disabled={submitting}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold disabled:opacity-60"
             >
-              {submitting ? 'Saving...' : currentFollowup ? 'Update Follow-up' : 'Schedule'}
+              {submitting ? 'Saving...' : currentFollowup ? 'Update Follow-up' : 'Schedule & Send'}
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Email Notification Details Modal */}
+      <Modal
+        isOpen={isEmailViewOpen}
+        onClose={() => setIsEmailViewOpen(false)}
+        title="Email Reminder Details"
+        maxWidth="max-w-lg"
+      >
+        {currentNotification && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-3.5 bg-gray-50 border border-gray-200 rounded-xl">
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase">Notification Status</p>
+                <div className="flex items-center space-x-2 mt-0.5">
+                  <span
+                    className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                      currentNotification.status === 'SENT'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : currentNotification.status === 'FAILED'
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}
+                  >
+                    {currentNotification.status}
+                  </span>
+                  {currentNotification.sent_at && (
+                    <span className="text-xs text-gray-500">
+                      Sent at: {new Date(currentNotification.sent_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleResendEmail(currentNotification.id)}
+                className="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 rounded-lg text-xs font-semibold transition"
+              >
+                <Send className="w-3.5 h-3.5 mr-1.5" />
+                Re-send
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div>
+                <span className="font-semibold text-gray-500 uppercase">Recipient:</span>
+                <p className="text-gray-900 font-medium text-sm">{currentNotification.receiver}</p>
+              </div>
+              <div>
+                <span className="font-semibold text-gray-500 uppercase">Subject:</span>
+                <p className="text-gray-900 font-medium text-sm">{currentNotification.subject}</p>
+              </div>
+              <div>
+                <span className="font-semibold text-gray-500 uppercase">Message Body:</span>
+                <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 font-mono text-xs whitespace-pre-wrap mt-1">
+                  {currentNotification.message}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setIsEmailViewOpen(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-xs font-semibold transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Delete Modal */}
