@@ -57,6 +57,25 @@ class AnalyticsSummaryView(APIView):
         email_pending = EmailNotification.objects.filter(status="PENDING").count()
 
         return Response({
+            # Top-level flat KPIs for direct consumption
+            "total_leads": leads_qs.count(),
+            "converted_leads": lead_status_counts.get("CONVERTED", 0),
+            "total_contacts": contacts_qs.count(),
+            "total_opportunities": opps_qs.count(),
+            "won_opportunities": opp_stage_counts.get("WON", 0),
+            "lost_opportunities": opp_stage_counts.get("LOST", 0),
+            "total_opportunity_value": total_opp_value,
+            "won_opportunity_value": won_opp_value,
+            "pending_followups": followup_status_counts.get("PENDING", 0),
+            "completed_followups": followup_status_counts.get("COMPLETED", 0),
+            "sent_emails": email_sent,
+            "lead_status_distribution": lead_status_counts,
+            "lead_source_distribution": lead_source_counts,
+            "opportunity_stage_distribution": opp_stage_counts,
+            "revenue_by_stage": opp_stage_values,
+            "followup_status_distribution": followup_status_counts,
+
+            # Structured breakdown objects
             "leads": {
                 "total": leads_qs.count(),
                 "converted": lead_status_counts.get("CONVERTED", 0),
