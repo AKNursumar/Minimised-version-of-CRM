@@ -1,0 +1,20 @@
+# ==============================================================================
+# Minimised CRM - Backend Dependencies (requirements.txt)
+# Python / Django REST Framework Application
+# ==============================================================================
+
+# Core Framework
+Django>=5.1.0,<7.0.0
+
+# REST API & Authentication
+djangorestframework>=3.14.0
+djangorestframework-simplejwt>=5.3.0
+PyJWT>=2.8.0
+
+# Cross-Origin Resource Sharing (CORS) for Frontend Integration
+django-cors-headers>=4.3.0
+
+# Database & Runtime Utilities
+asgiref>=3.7.0
+sqlparse>=0.5.0
+tzdata>=2024.1
