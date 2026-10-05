@@ -38,6 +38,16 @@ export const contactService = {
     });
     return response.data;
   },
+
+  getTimeline: async (id, params = {}) => {
+    const response = await api.get(`/api/contacts/${id}/timeline/`, { params });
+    return response.data;
+  },
+
+  addNote: async (id, noteData) => {
+    const response = await api.post(`/api/contacts/${id}/notes/`, noteData);
+    return response.data;
+  },
 };
 
 export default contactService;

@@ -30,6 +30,11 @@ export const followupService = {
     const response = await api.delete(`/api/followups/${id}/`);
     return response.data;
   },
+
+  triggerReminders: async () => {
+    const response = await api.post('/api/followups/trigger-reminders/');
+    return response.data;
+  },
 };
 
 export default followupService;

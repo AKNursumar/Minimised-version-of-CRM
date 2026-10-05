@@ -35,6 +35,11 @@ export const notificationService = {
     const response = await api.post(`/api/email-notifications/${id}/resend/`);
     return response.data;
   },
+
+  getQueueStatus: async () => {
+    const response = await api.get('/api/email-notifications/queue-status/');
+    return response.data;
+  },
 };
 
 export default notificationService;

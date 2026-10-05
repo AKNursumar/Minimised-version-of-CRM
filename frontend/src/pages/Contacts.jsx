@@ -14,11 +14,13 @@ import {
   RefreshCw,
   FileText,
   Download,
+  History,
 } from 'lucide-react';
 import MainLayout from '../components/MainLayout';
 import Modal from '../components/Modal';
 import Toast from '../components/Toast';
 import LoadingSpinner from '../components/LoadingSpinner';
+import CustomerTimelineModal from '../components/CustomerTimelineModal';
 import contactService from '../services/contactService';
 import leadService from '../services/leadService';
 import { getErrorMessage } from '../services/api';
@@ -41,7 +43,14 @@ export const Contacts = () => {
   const [isAddEditOpen, setIsAddEditOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const [currentContact, setCurrentContact] = useState(null);
+  const [timelineContact, setTimelineContact] = useState(null);
+
+  const handleOpenTimeline = (contact) => {
+    setTimelineContact(contact);
+    setIsTimelineOpen(true);
+  };
 
   // Form state
   const initialFormState = {
@@ -389,6 +398,14 @@ export const Contacts = () => {
                       <div className="flex items-center justify-end space-x-1">
                         <button
                           type="button"
+                          onClick={() => handleOpenTimeline(contact)}
+                          className="p-1.5 rounded-md text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition"
+                          title="Customer Interaction Timeline"
+                        >
+                          <History className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleOpenView(contact)}
                           className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition"
                           title="View Contact Details"
@@ -589,7 +606,18 @@ export const Contacts = () => {
               )}
             </div>
 
-            <div className="flex justify-end pt-4 border-t border-gray-100">
+            <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsViewOpen(false);
+                  handleOpenTimeline(currentContact);
+                }}
+                className="inline-flex items-center px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold transition"
+              >
+                <History className="w-3.5 h-3.5 mr-1.5" />
+                View Customer Timeline & History
+              </button>
               <button
                 type="button"
                 onClick={() => setIsViewOpen(false)}
@@ -601,6 +629,14 @@ export const Contacts = () => {
           </div>
         )}
       </Modal>
+
+      {/* Customer Interaction Timeline Modal */}
+      <CustomerTimelineModal
+        isOpen={isTimelineOpen}
+        onClose={() => setIsTimelineOpen(false)}
+        contact={timelineContact}
+        onUpdateContact={fetchContacts}
+      />
 
       {/* Delete Confirmation Modal */}
       <Modal

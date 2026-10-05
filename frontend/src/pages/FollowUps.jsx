@@ -14,6 +14,7 @@ import {
   Mail,
   Send,
   FileText,
+  Zap,
 } from 'lucide-react';
 import MainLayout from '../components/MainLayout';
 import Modal from '../components/Modal';
@@ -29,6 +30,7 @@ export const FollowUps = () => {
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [triggeringReminders, setTriggeringReminders] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
 
@@ -223,6 +225,25 @@ export const FollowUps = () => {
     return found ? found.title : `Deal #${oppId}`;
   };
 
+  const handleTriggerReminders = async () => {
+    setTriggeringReminders(true);
+    try {
+      const res = await followupService.triggerReminders();
+      setToast({
+        type: 'success',
+        message: res.message || 'Scheduled reminders processed via Celery background task queue.',
+      });
+      await fetchFollowups();
+    } catch (err) {
+      setToast({
+        type: 'error',
+        message: getErrorMessage(err, 'Failed to trigger reminder queue.'),
+      });
+    } finally {
+      setTriggeringReminders(false);
+    }
+  };
+
   return (
     <MainLayout title="Client Follow-ups & Reminders">
       {toast && (
@@ -241,7 +262,17 @@ export const FollowUps = () => {
             Schedule meetings, call tasks, and automated email reminders for clients
           </p>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2.5">
+          <button
+            type="button"
+            onClick={handleTriggerReminders}
+            disabled={triggeringReminders}
+            className="inline-flex items-center px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold shadow-2xs transition"
+            title="Scan and dispatch due reminders using Celery background queue"
+          >
+            <Zap className={`w-3.5 h-3.5 mr-1.5 text-indigo-600 ${triggeringReminders ? 'animate-bounce' : ''}`} />
+            {triggeringReminders ? 'Dispatching Queue...' : 'Run Celery Queue'}
+          </button>
           <button
             type="button"
             onClick={fetchFollowups}
