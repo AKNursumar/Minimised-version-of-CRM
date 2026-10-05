@@ -11,9 +11,14 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load environment variables from .env if present
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -157,4 +162,41 @@ EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() in ("true", "1", "yes")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@minimisedcrm.local")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@minimisedcrm.local")
+
+# ==============================================================================
+# Celery & Redis Task Queue Configuration
+# ==============================================================================
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60
+
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = False
+CELERY_BROKER_CONNECTION_MAX_RETRIES = 1
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "socket_timeout": 1,
+    "socket_connect_timeout": 1,
+}
+
+import sys
+if "test" in sys.argv:
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_EAGER_PROPAGATES = True
+else:
+    CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_TASK_ALWAYS_EAGER", "False").lower() in ("true", "1", "yes")
+
+# Periodic Task Scheduling (Celery Beat)
+from celery.schedules import crontab
+CELERY_BEAT_SCHEDULE = {
+    "process-scheduled-followup-reminders": {
+        "task": "followups.tasks.process_scheduled_reminders_task",
+        "schedule": crontab(minute="*/15"),
+    },
+}
+
