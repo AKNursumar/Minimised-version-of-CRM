@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+const BASE_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ||
+  'http://127.0.0.1:8000';
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -113,29 +115,47 @@ api.interceptors.response.use(
 export const getErrorMessage = (error, defaultMsg = 'An unexpected error occurred.') => {
   if (!error) return defaultMsg;
 
+  // 1. Client-side or gateway request timeout
+  if (
+    error.code === 'ECONNABORTED' ||
+    error.message?.toLowerCase().includes('timeout') ||
+    error.name === 'AbortError' ||
+    error.code === 'ERR_CANCELED'
+  ) {
+    return 'The request timed out. The server took too long to respond. Please try again.';
+  }
+
+  // 2. HTTP response received from backend
   if (error.response) {
     const { status, data } = error.response;
 
-    // Standard HTTP status code messages
+    // Prefer explicit backend messages from JSON response if present
+    const explicitMsg =
+      (typeof data === 'string' && data) ||
+      data?.message ||
+      data?.detail ||
+      data?.error;
+
     if (status === 401) {
       return 'Session expired or unauthorized. Please log in again.';
     }
     if (status === 403) {
-      if (data?.detail) return data.detail;
-      return 'You do not have permission to perform this action.';
+      return explicitMsg || 'You do not have permission to perform this action.';
     }
     if (status === 404) {
-      if (data?.detail) return data.detail;
-      return 'The requested record or resource was not found.';
+      return explicitMsg || 'The requested record or resource was not found.';
+    }
+    if (status === 409) {
+      return explicitMsg || 'The request could not be completed due to a conflict or pending task.';
+    }
+    if (status === 503) {
+      return explicitMsg || 'Task processing service is temporarily unavailable. Please try again shortly.';
     }
     if (status === 500) {
-      return 'Internal server error. Please try again later or contact your administrator.';
+      return explicitMsg || 'Internal server error. Please try again later or contact your administrator.';
     }
 
-    if (typeof data === 'string') return data;
-    if (data?.error) return data.error;
-    if (data?.detail) return data.detail;
-    if (data?.message) return data.message;
+    if (explicitMsg) return explicitMsg;
 
     // DRF field validation errors: { field: ["error message"] }
     if (typeof data === 'object' && data !== null) {
@@ -151,8 +171,10 @@ export const getErrorMessage = (error, defaultMsg = 'An unexpected error occurre
     }
     return `Server responded with error (${status})`;
   } else if (error.request) {
+    // 3. Genuine network failure (no response received from server)
     return 'Cannot reach the server. Please check your network connection and ensure the backend is running.';
   }
+
   return error.message || defaultMsg;
 };
 

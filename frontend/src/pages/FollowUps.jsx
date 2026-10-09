@@ -4,8 +4,6 @@ import {
   Plus,
   Search,
   CheckCircle2,
-  Clock,
-  XCircle,
   AlertTriangle,
   RefreshCw,
   Edit2,
@@ -13,7 +11,6 @@ import {
   TrendingUp,
   Mail,
   Send,
-  FileText,
   Zap,
 } from 'lucide-react';
 import MainLayout from '../components/MainLayout';
@@ -31,6 +28,7 @@ export const FollowUps = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [triggeringReminders, setTriggeringReminders] = useState(false);
+  const [resendingId, setResendingId] = useState(null);
   const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
 
@@ -134,13 +132,17 @@ export const FollowUps = () => {
   };
 
   const handleResendEmail = async (notifId) => {
+    if (resendingId) return;
+    setResendingId(notifId);
     try {
       const result = await notificationService.resend(notifId);
       setToast({ type: 'success', message: result.message || 'Email re-sent successfully!' });
-      fetchFollowups();
+      await fetchFollowups();
       if (isEmailViewOpen) setIsEmailViewOpen(false);
     } catch (err) {
       setToast({ type: 'error', message: getErrorMessage(err, 'Failed to re-send email.') });
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -413,6 +415,8 @@ export const FollowUps = () => {
                               className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border ${
                                 latestNotif.status === 'SENT'
                                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : latestNotif.status === 'QUEUED'
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
                                   : latestNotif.status === 'FAILED'
                                   ? 'bg-rose-50 text-rose-700 border-rose-200'
                                   : 'bg-amber-50 text-amber-700 border-amber-200'
@@ -641,6 +645,8 @@ export const FollowUps = () => {
                     className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
                       currentNotification.status === 'SENT'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : currentNotification.status === 'QUEUED'
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
                         : currentNotification.status === 'FAILED'
                         ? 'bg-rose-50 text-rose-700 border-rose-200'
                         : 'bg-amber-50 text-amber-700 border-amber-200'
@@ -658,11 +664,13 @@ export const FollowUps = () => {
 
               <button
                 type="button"
+                disabled={resendingId === currentNotification.id || currentNotification.status === 'QUEUED'}
                 onClick={() => handleResendEmail(currentNotification.id)}
-                className="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 rounded-lg text-xs font-semibold transition"
+                className="inline-flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 rounded-lg text-xs font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+                title={currentNotification.status === 'QUEUED' ? 'Email is currently queued for delivery' : 'Re-send this email notification'}
               >
-                <Send className="w-3.5 h-3.5 mr-1.5" />
-                Re-send
+                <Send className={`w-3.5 h-3.5 mr-1.5 ${resendingId === currentNotification.id ? 'animate-spin' : ''}`} />
+                {resendingId === currentNotification.id ? 'Queuing...' : currentNotification.status === 'QUEUED' ? 'Queued' : 'Re-send'}
               </button>
             </div>
 

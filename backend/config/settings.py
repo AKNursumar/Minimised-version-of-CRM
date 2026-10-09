@@ -25,12 +25,19 @@ load_dotenv(BASE_DIR / ".env")
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-+0^ym!8y8_v8&5^c0%zuq@i91)+5b%!n32h#7(h0a0itk=)ufo"
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "django-insecure-+0^ym!8y8_v8&5^c0%zuq@i91)+5b%!n32h#7(h0a0itk=)ufo",
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
 
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
+allowed_hosts_env = os.getenv("ALLOWED_HOSTS", "")
+if allowed_hosts_env:
+    ALLOWED_HOSTS = [h.strip() for h in allowed_hosts_env.split(",") if h.strip()]
+else:
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver", ".onrender.com"]
 
 
 # Application definition
@@ -142,15 +149,20 @@ REST_FRAMEWORK = {
 
 AUTH_USER_MODEL = "users.User"
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+cors_origins_env = os.getenv("CORS_ALLOWED_ORIGINS", "")
+if cors_origins_env:
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+else:
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
 CORS_ALLOW_CREDENTIALS = True
 
 # Email Configuration
-import os
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",
     "django.core.mail.backends.console.EmailBackend"
@@ -162,6 +174,8 @@ EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() in ("true", "1", "yes")
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False").lower() in ("true", "1", "yes")
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", 10))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@minimisedcrm.local")
 
 # ==============================================================================
@@ -180,14 +194,17 @@ CELERY_TASK_TIME_LIMIT = 30 * 60
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = False
 CELERY_BROKER_CONNECTION_MAX_RETRIES = 1
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    "socket_timeout": 1,
-    "socket_connect_timeout": 1,
+    "socket_timeout": int(os.getenv("CELERY_SOCKET_TIMEOUT", 2)),
+    "socket_connect_timeout": int(os.getenv("CELERY_SOCKET_CONNECT_TIMEOUT", 2)),
 }
 
 import sys
 if "test" in sys.argv:
     CELERY_TASK_ALWAYS_EAGER = True
     CELERY_TASK_EAGER_PROPAGATES = True
+    PASSWORD_HASHERS = [
+        "django.contrib.auth.hashers.MD5PasswordHasher",
+    ]
 else:
     CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_TASK_ALWAYS_EAGER", "False").lower() in ("true", "1", "yes")
 

@@ -23,3 +23,6 @@ asgiref>=3.7.0
 sqlparse>=0.5.0
 tzdata>=2024.1
 python-dotenv>=1.0.0
+
+# Production WSGI Server (Render / Production)
+gunicorn>=22.0.0

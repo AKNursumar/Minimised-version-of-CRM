@@ -1,33 +1,60 @@
 import logging
+from typing import cast
 from celery import shared_task
+from celery.app.task import Task
 from django.utils import timezone
 from .models import FollowUp, EmailNotification
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def send_email_notification_task(self, notification_id):
+@shared_task(bind=True, max_retries=3, default_retry_delay=5)
+def _send_email_notification_task(self, notification_id: int):
     """
     Celery background task for asynchronous email delivery with automatic retries.
     """
     from .services import send_notification_email
 
     try:
-        notification = EmailNotification.objects.get(id=notification_id)
+        notification = EmailNotification.objects.get(pk=notification_id)
     except EmailNotification.DoesNotExist:
         logger.warning(f"EmailNotification #{notification_id} not found. Skipping delivery.")
         return {"status": "NOT_FOUND", "notification_id": notification_id}
 
-    logger.info(f"[Celery] Processing async email delivery for notification #{notification_id} to {notification.receiver}")
-    success, message = send_notification_email(notification)
+    # Duplicate send prevention: if already sent, exit early
+    if notification.status == EmailNotification.Status.SENT:
+        logger.info(
+            f"[Celery] Notification #{notification_id} has already been sent. Skipping duplicate send."
+        )
+        return {"status": "ALREADY_SENT", "notification_id": notification_id, "message": "Email already sent"}
 
-    if not success and self.request.retries < self.max_retries:
+    logger.info(
+        f"[Celery] Processing async email delivery for notification #{notification_id} to {notification.receiver}"
+    )
+
+    will_retry = self.request.retries < self.max_retries
+    # Only mark status as FAILED in DB when all retries are exhausted
+    success, message = send_notification_email(notification, mark_failed=not will_retry)
+
+    if not success and will_retry:
+        from django.conf import settings
+        countdown = (
+            0
+            if getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False)
+            else min(60 * (2 ** self.request.retries), 300)
+        )
         logger.warning(
             f"[Celery] Delivery failed for notification #{notification_id}. "
-            f"Retrying ({self.request.retries + 1}/{self.max_retries})... Error: {message}"
+            f"Retrying in {countdown}s ({self.request.retries + 1}/{self.max_retries})... Error: {message}"
         )
-        raise self.retry(exc=Exception(message))
+        raise self.retry(exc=Exception(message), countdown=countdown)
+
+    if not success:
+        logger.error(
+            f"[Celery] Max retries ({self.max_retries}) reached for notification #{notification_id}. Marked as FAILED."
+        )
+        notification.status = EmailNotification.Status.FAILED
+        notification.save(update_fields=["status"])
 
     return {
         "status": "SENT" if success else "FAILED",
@@ -36,8 +63,11 @@ def send_email_notification_task(self, notification_id):
     }
 
 
+send_email_notification_task: Task = cast(Task, _send_email_notification_task)
+
+
 @shared_task(bind=True)
-def process_scheduled_reminders_task(self):
+def _process_scheduled_reminders_task(self):
     """
     Celery beat periodic task: Scans pending follow-ups due on or before today
     and automatically dispatches email reminders to assigned contacts/leads.
@@ -68,8 +98,13 @@ def process_scheduled_reminders_task(self):
                 continue
 
         # Check if an email notification was already generated
-        already_notified = followup.email_notifications.filter(
-            status__in=[EmailNotification.Status.SENT, EmailNotification.Status.PENDING]
+        already_notified = EmailNotification.objects.filter(
+            followup=followup,
+            status__in=[
+                EmailNotification.Status.SENT,
+                EmailNotification.Status.PENDING,
+                EmailNotification.Status.QUEUED,
+            ],
         ).exists()
 
         if not already_notified:
@@ -99,7 +134,7 @@ def process_scheduled_reminders_task(self):
                     use_async=True,
                 )
                 dispatched += 1
-                logger.info(f"[Celery Beat] Dispatched reminder for FollowUp #{followup.id} to {receiver}")
+                logger.info(f"[Celery Beat] Dispatched reminder for FollowUp #{followup.pk} to {receiver}")
 
     return {
         "status": "COMPLETED",
@@ -107,3 +142,6 @@ def process_scheduled_reminders_task(self):
         "dispatched_reminders": dispatched,
         "checked_at": str(now),
     }
+
+
+process_scheduled_reminders_task: Task = cast(Task, _process_scheduled_reminders_task)

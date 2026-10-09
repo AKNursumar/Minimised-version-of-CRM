@@ -21,7 +21,9 @@ class FollowUpViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role in ["ADMIN", "MANAGER"]:
+        if not user.is_authenticated:
+            return FollowUp.objects.none()
+        if getattr(user, "role", None) in ["ADMIN", "MANAGER"]:
             qs = FollowUp.objects.all().order_by("-id")
         else:
             qs = FollowUp.objects.filter(opportunity__assigned_to=user).order_by("-id")
@@ -40,10 +42,11 @@ class FollowUpViewSet(viewsets.ModelViewSet):
         followup = serializer.save()
 
         # Check if email reminder was configured
-        email_reminder = self.request.data.get("email_reminder")
-        receiver = self.request.data.get("receiver")
-        subject = self.request.data.get("subject")
-        message = self.request.data.get("message")
+        req_data = self.request.data if isinstance(self.request.data, dict) else {}
+        email_reminder = req_data.get("email_reminder")
+        receiver = req_data.get("receiver")
+        subject = req_data.get("subject")
+        message = req_data.get("message")
 
         if (email_reminder is True or str(email_reminder).lower() in ("true", "1")) and receiver:
             create_and_send_notification(
@@ -55,14 +58,14 @@ class FollowUpViewSet(viewsets.ModelViewSet):
             )
 
         from users.activity import log_activity
-        opp_title = followup.opportunity.title if followup.opportunity else f"#{followup.id}"
+        opp_title = followup.opportunity.title if followup.opportunity else f"#{followup.pk}"
         log_activity(self.request.user, f"Created follow-up for {opp_title}")
 
     def perform_update(self, serializer):
         prev_status = self.get_object().status
         followup = serializer.save()
         from users.activity import log_activity
-        opp_title = followup.opportunity.title if followup.opportunity else f"#{followup.id}"
+        opp_title = followup.opportunity.title if followup.opportunity else f"#{followup.pk}"
         if prev_status != followup.status and followup.status == FollowUp.Status.COMPLETED:
             log_activity(self.request.user, f"Completed follow-up for {opp_title}")
         else:
@@ -99,9 +102,18 @@ class FollowUpViewSet(viewsets.ModelViewSet):
 
 class EmailNotificationViewSet(viewsets.ModelViewSet):
 
-    queryset = EmailNotification.objects.all().order_by("-id")
     serializer_class = EmailNotificationSerializer
     permission_classes = [AllCRMUsers]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return EmailNotification.objects.none()
+        if getattr(user, "role", None) in ["ADMIN", "MANAGER"]:
+            return EmailNotification.objects.all().order_by("-id")
+        return EmailNotification.objects.filter(
+            followup__opportunity__assigned_to=user
+        ).order_by("-id")
 
     def perform_create(self, serializer):
         notification = serializer.save()
@@ -113,14 +125,52 @@ class EmailNotificationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def resend(self, request, pk=None):
         notification = self.get_object()
+
+        # Guard against duplicate queueing if already in queue
+        if notification.status == EmailNotification.Status.QUEUED:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Email notification is already queued for delivery.",
+                    "notification": self.get_serializer(notification).data,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # Reset status if previously sent or failed
+        if notification.status in [EmailNotification.Status.FAILED, EmailNotification.Status.SENT]:
+            notification.status = EmailNotification.Status.PENDING
+            notification.sent_at = None
+            notification.save(update_fields=["status", "sent_at"])
+
         success, message = dispatch_notification_email(notification, use_async=True)
-        from users.activity import log_activity
-        log_activity(request.user, f"Re-sent email notification to {notification.receiver}")
-        return Response({
-            "success": success,
-            "message": message,
-            "notification": self.get_serializer(notification).data,
-        })
+        notification.refresh_from_db()
+
+        if success:
+            from users.activity import log_activity
+            log_activity(request.user, f"Re-sent email notification to {notification.receiver}")
+            http_status = (
+                status.HTTP_202_ACCEPTED
+                if notification.status == EmailNotification.Status.QUEUED
+                else status.HTTP_200_OK
+            )
+            return Response(
+                {
+                    "success": True,
+                    "message": message,
+                    "notification": self.get_serializer(notification).data,
+                },
+                status=http_status,
+            )
+        else:
+            return Response(
+                {
+                    "success": False,
+                    "message": message,
+                    "notification": self.get_serializer(notification).data,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
     @action(detail=False, methods=["get"], url_path="queue-status")
     def queue_status(self, request):
@@ -136,7 +186,7 @@ class EmailNotificationViewSet(viewsets.ModelViewSet):
 
         try:
             import redis
-            r = redis.Redis.from_url(broker_url, socket_connect_timeout=1)
+            r = redis.Redis.from_url(broker_url, socket_connect_timeout=0.5, socket_timeout=0.5)
             r.ping()
             broker_reachable = True
         except Exception:
@@ -158,6 +208,7 @@ class EmailNotificationViewSet(viewsets.ModelViewSet):
             "celery_workers": active_workers,
             "eager_mode": getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False),
             "pending_emails": EmailNotification.objects.filter(status=EmailNotification.Status.PENDING).count(),
+            "queued_emails": EmailNotification.objects.filter(status=EmailNotification.Status.QUEUED).count(),
             "sent_emails": EmailNotification.objects.filter(status=EmailNotification.Status.SENT).count(),
             "failed_emails": EmailNotification.objects.filter(status=EmailNotification.Status.FAILED).count(),
         })

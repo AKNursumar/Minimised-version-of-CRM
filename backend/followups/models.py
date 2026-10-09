@@ -47,6 +47,7 @@ class EmailNotification(models.Model):
 
     class Status(models.TextChoices):
         PENDING = "PENDING", "Pending"
+        QUEUED = "QUEUED", "Queued"
         SENT = "SENT", "Sent"
         FAILED = "FAILED", "Failed"
 
